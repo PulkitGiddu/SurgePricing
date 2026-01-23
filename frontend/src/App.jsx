@@ -19,7 +19,7 @@ const defaultDriver = {
 };
 
 function buildMapLink(pickupLat, pickupLng, dropLat, dropLng) {
-  return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${pickupLat},${pickupLng};${dropLat},${dropLng}`;
+  return `https:=${pickupLat},${pickupLng};${dropLat},${dropLng}`;
 }
 
 function formatNumber(value, digits = 2) {
@@ -151,7 +151,6 @@ export default function App() {
       <header className="header">
         <div>
           <h1>Surge Pricing Engine</h1>
-          <p>Rider + Driver dashboards with H3 geofence pricing.</p>
         </div>
         <div className="tabs">
           <button

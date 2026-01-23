@@ -2,6 +2,7 @@ package com.wecode.surgeprice.consumer;
 
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wecode.surgeprice.config.SurgePricingProperties;
 import com.wecode.surgeprice.dto.DriverLocationDTO;
 import com.wecode.surgeprice.service.GeofenceService;
 import com.wecode.surgeprice.service.RedisService;
@@ -21,14 +22,17 @@ public class DriverLocationConsumer {
     private final ObjectMapper objectMapper;
     private final GeofenceService geofenceService;
     private final RedisService redisService;
+    private final SurgePricingProperties properties;
     private final AtomicLong processedCount = new AtomicLong(0);
 
     public DriverLocationConsumer(ObjectMapper objectMapper,
                                   GeofenceService geofenceService,
-                                  RedisService redisService) {
+                                  RedisService redisService,
+                                  SurgePricingProperties properties) {
         this.objectMapper = objectMapper;
         this.geofenceService = geofenceService;
         this.redisService = redisService;
+        this.properties = properties;
     }
 
     @KafkaListener(topics = "driver-locations", containerFactory = "kafkaListenerContainerFactory")
@@ -40,11 +44,17 @@ public class DriverLocationConsumer {
             try {
                 DriverLocationDTO location = objectMapper.readValue(message, DriverLocationDTO.class);
 
-                // Convert to geofence
-                String geofenceId = geofenceService.getGeofenceId(location.getLat(), location.getLng());
-
-                // Update Redis (fire and forget, no blocking)
-                redisService.addDriver(geofenceId, location.getDriverId());
+                // Update all supported resolutions to allow dynamic pricing
+                int minRes = properties.getMinH3Resolution();
+                int maxRes = properties.getMaxH3Resolution();
+                if (minRes > maxRes) {
+                    minRes = properties.getH3Resolution();
+                    maxRes = properties.getH3Resolution();
+                }
+                for (int res = minRes; res <= maxRes; res++) {
+                    String geofenceId = geofenceService.getGeofenceId(location.getLat(), location.getLng(), res);
+                    redisService.addDriver(res, geofenceId, location.getDriverId());
+                }
 
                 successCount++;
 

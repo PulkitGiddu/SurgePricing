@@ -8,6 +8,10 @@ import org.springframework.context.annotation.Configuration;
 public class SurgePricingProperties {
 
     private int h3Resolution = 8; // ~0.5 km^2 hexagons
+    private int minH3Resolution = 7;
+    private int maxH3Resolution = 9;
+    private double shortTripKmThreshold = 5.0;
+    private double longTripKmThreshold = 20.0;
     private int minDrivers = 5;
     private double maxSurgeMultiplier = 3.0;
     private double baseSurgeMultiplier = 1.0;
@@ -22,6 +26,22 @@ public class SurgePricingProperties {
     // Getters and Setters
     public int getH3Resolution() { return h3Resolution; }
     public void setH3Resolution(int h3Resolution) { this.h3Resolution = h3Resolution; }
+
+    public int getMinH3Resolution() { return minH3Resolution; }
+    public void setMinH3Resolution(int minH3Resolution) { this.minH3Resolution = minH3Resolution; }
+
+    public int getMaxH3Resolution() { return maxH3Resolution; }
+    public void setMaxH3Resolution(int maxH3Resolution) { this.maxH3Resolution = maxH3Resolution; }
+
+    public double getShortTripKmThreshold() { return shortTripKmThreshold; }
+    public void setShortTripKmThreshold(double shortTripKmThreshold) {
+        this.shortTripKmThreshold = shortTripKmThreshold;
+    }
+
+    public double getLongTripKmThreshold() { return longTripKmThreshold; }
+    public void setLongTripKmThreshold(double longTripKmThreshold) {
+        this.longTripKmThreshold = longTripKmThreshold;
+    }
 
     public int getMinDrivers() { return minDrivers; }
     public void setMinDrivers(int minDrivers) { this.minDrivers = minDrivers; }

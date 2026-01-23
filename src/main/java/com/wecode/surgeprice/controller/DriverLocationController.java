@@ -32,7 +32,7 @@ public class DriverLocationController {
     @PostMapping("/location")
     public ResponseEntity<Map<String, String>> updateLocation(@Valid @RequestBody DriverLocationDTO location) {
         try {
-            // Convert to JSON and send to Kafka asynchronously
+            // Convert to JSON of driver and send to Kafka asynchronously
             String message = objectMapper.writeValueAsString(location);
 
             kafkaTemplate.send(TOPIC_NAME, location.getDriverId(), message)
@@ -42,7 +42,6 @@ public class DriverLocationController {
                         }
                     });
 
-            // Return immediately without waiting for Kafka
             return ResponseEntity.status(HttpStatus.ACCEPTED)
                     .body(Map.of("status", "accepted", "driverId", location.getDriverId()));
 

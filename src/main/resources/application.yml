@@ -33,6 +33,10 @@ spring:
 
 surge:
   h3-resolution: 8
+  min-h3-resolution: 7
+  max-h3-resolution: 9
+  short-trip-km-threshold: 5.0
+  long-trip-km-threshold: 20.0
   min-drivers: 5
   max-surge-multiplier: 3.0
   base-surge-multiplier: 1.0

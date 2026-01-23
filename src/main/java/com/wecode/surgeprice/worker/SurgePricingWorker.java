@@ -45,26 +45,37 @@ public class SurgePricingWorker {
             int processed = 0;
 
             for (String key : geofences) {
-                String geofenceId = extractGeofenceId(key);
-                if (geofenceId == null) continue;
+                ParsedGeofence parsed = parseGeofenceKey(key);
+                if (parsed == null) {
+                    continue;
+                }
 
-                long currentDrivers = redisService.getDriverCount(geofenceId);
-                long demand = redisService.getDemandCount(geofenceId);
+                long currentDrivers = redisService.getDriverCount(parsed.resolution, parsed.geofenceId);
+                long demand = redisService.getDemandCount(parsed.resolution, parsed.geofenceId);
+
+                String cacheKey = cacheKey(parsed.resolution, parsed.geofenceId);
 
                 // Update baseline (rolling average)
-                double baseline = updateBaseline(geofenceId, currentDrivers);
+                double baseline = updateBaseline(cacheKey, currentDrivers);
 
                 // Calculate surge
-                double surge = calculateSurgeMultiplier(geofenceId, currentDrivers, baseline, demand);
+                double surge = calculateSurgeMultiplier(
+                        cacheKey,
+                        parsed.resolution,
+                        parsed.geofenceId,
+                        currentDrivers,
+                        baseline,
+                        demand
+                );
 
                 // Apply smoothing to prevent oscillations
-                surge = applySurgeSmoothing(geofenceId, surge);
+                surge = applySurgeSmoothing(cacheKey, surge);
 
                 // Store in Redis
-                redisService.updateSurge(geofenceId, surge);
-                redisService.updateBaseline(geofenceId, baseline);
+                redisService.updateSurge(parsed.resolution, parsed.geofenceId, surge);
+                redisService.updateBaseline(parsed.resolution, parsed.geofenceId, baseline);
 
-                previousSurge.put(geofenceId, surge);
+                previousSurge.put(cacheKey, surge);
                 processed++;
             }
 
@@ -76,30 +87,34 @@ public class SurgePricingWorker {
         }
     }
 
-    private double updateBaseline(String geofenceId, long currentDrivers) {
+    private double updateBaseline(String cacheKey, long currentDrivers) {
         // Simple exponential moving average for baseline
         double alpha = 0.1; // Weight for new value
-        double currentBaseline = baselineHistory.getOrDefault(geofenceId, (double) currentDrivers);
+        double currentBaseline = baselineHistory.getOrDefault(cacheKey, (double) currentDrivers);
         double newBaseline = (alpha * currentDrivers) + ((1 - alpha) * currentBaseline);
-        baselineHistory.put(geofenceId, newBaseline);
+        baselineHistory.put(cacheKey, newBaseline);
         return newBaseline;
     }
 
-    private double calculateSurgeMultiplier(String geofenceId, long currentDrivers,
-                                            double baseline, long demand) {
+    private double calculateSurgeMultiplier(String cacheKey,
+                                            int resolution,
+                                            String geofenceId,
+                                            long currentDrivers,
+                                            double baseline,
+                                            long demand) {
         // Don't apply surge if below minimum drivers
         if (currentDrivers < properties.getMinDrivers()) {
             return properties.getBaseSurgeMultiplier();
         }
 
         // Check for degraded mode (no recent updates)
-        long lastUpdate = redisService.getLastUpdate(geofenceId);
+        long lastUpdate = redisService.getLastUpdate(resolution, geofenceId);
         long timeSinceUpdate = System.currentTimeMillis() - lastUpdate;
         if (timeSinceUpdate > 5000) { // 5 seconds threshold
             logger.warn("Degraded mode for geofence {}: {}ms since last update",
                     geofenceId, timeSinceUpdate);
             // Return last known surge or base
-            return previousSurge.getOrDefault(geofenceId, properties.getBaseSurgeMultiplier());
+            return previousSurge.getOrDefault(cacheKey, properties.getBaseSurgeMultiplier());
         }
 
         // Calculate driver availability ratio
@@ -121,8 +136,8 @@ public class SurgePricingWorker {
         return properties.getBaseSurgeMultiplier();
     }
 
-    private double applySurgeSmoothing(String geofenceId, double newSurge) {
-        Double previousSurgeValue = previousSurge.get(geofenceId);
+    private double applySurgeSmoothing(String cacheKey, double newSurge) {
+        Double previousSurgeValue = previousSurge.get(cacheKey);
         if (previousSurgeValue == null) {
             return newSurge;
         }
@@ -136,9 +151,31 @@ public class SurgePricingWorker {
         return newSurge;
     }
 
-    private String extractGeofenceId(String key) {
-        // Extract geofence ID from key like "geofence:abc123:drivers"
+    private ParsedGeofence parseGeofenceKey(String key) {
+        // Expected key: geofence:<resolution>:<geofenceId>:drivers
         String[] parts = key.split(":");
-        return parts.length >= 2 ? parts[1] : null;
+        if (parts.length < 4) {
+            return null;
+        }
+        try {
+            int resolution = Integer.parseInt(parts[1]);
+            return new ParsedGeofence(resolution, parts[2]);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private String cacheKey(int resolution, String geofenceId) {
+        return resolution + ":" + geofenceId;
+    }
+
+    private static class ParsedGeofence {
+        private final int resolution;
+        private final String geofenceId;
+
+        private ParsedGeofence(int resolution, String geofenceId) {
+            this.resolution = resolution;
+            this.geofenceId = geofenceId;
+        }
     }
 }

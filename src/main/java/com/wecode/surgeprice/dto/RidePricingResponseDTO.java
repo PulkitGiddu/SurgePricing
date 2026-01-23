@@ -22,6 +22,9 @@ public class RidePricingResponseDTO {
     @JsonProperty("geofenceId")
     private String geofenceId;
 
+    @JsonProperty("resolution")
+    private int resolution;
+
     @JsonProperty("nearbyDrivers")
     private long nearbyDrivers;
 
@@ -43,6 +46,7 @@ public class RidePricingResponseDTO {
                                   double surgeMultiplier,
                                   double finalPrice,
                                   String geofenceId,
+                                  int resolution,
                                   long nearbyDrivers,
                                   long requestCount,
                                   double ratio,
@@ -54,6 +58,7 @@ public class RidePricingResponseDTO {
         this.surgeMultiplier = surgeMultiplier;
         this.finalPrice = finalPrice;
         this.geofenceId = geofenceId;
+        this.resolution = resolution;
         this.nearbyDrivers = nearbyDrivers;
         this.requestCount = requestCount;
         this.ratio = ratio;
@@ -67,6 +72,7 @@ public class RidePricingResponseDTO {
     public double getSurgeMultiplier() { return surgeMultiplier; }
     public double getFinalPrice() { return finalPrice; }
     public String getGeofenceId() { return geofenceId; }
+    public int getResolution() { return resolution; }
     public long getNearbyDrivers() { return nearbyDrivers; }
     public long getRequestCount() { return requestCount; }
     public double getRatio() { return ratio; }

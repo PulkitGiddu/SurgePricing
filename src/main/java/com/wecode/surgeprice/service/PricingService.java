@@ -24,13 +24,12 @@ public class PricingService {
      * O(1) price lookup - just Redis get operations
      */
     public PriceResponseDTO getPrice(double lat, double lng) {
-        // Convert to geofence (O(1) H3 operation)
-        String geofenceId = geofenceService.getGeofenceId(lat, lng);
 
-        // O(1) Redis lookup
-        double surgeMultiplier = redisService.getSurge(geofenceId);
+        String geofenceId = geofenceService.getGeofenceId(lat, lng, properties.getH3Resolution());
 
-        // Calculate final price
+        double surgeMultiplier = redisService.getSurge(properties.getH3Resolution(), geofenceId);
+
+
         return new PriceResponseDTO(
                 properties.getBaseFare(),
                 surgeMultiplier,
@@ -62,5 +61,20 @@ public class PricingService {
 
     public double calculateBasePrice(double distanceKm) {
         return distanceKm * properties.getPricePerKm();
+    }
+
+    public int selectResolution(double distanceKm) {
+        int minRes = properties.getMinH3Resolution();
+        int maxRes = properties.getMaxH3Resolution();
+        if (minRes > maxRes) {
+            return properties.getH3Resolution();
+        }
+        if (distanceKm <= properties.getShortTripKmThreshold()) {
+            return maxRes;
+        }
+        if (distanceKm >= properties.getLongTripKmThreshold()) {
+            return minRes;
+        }
+        return properties.getH3Resolution();
     }
 }

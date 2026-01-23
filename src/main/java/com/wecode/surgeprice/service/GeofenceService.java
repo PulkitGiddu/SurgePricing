@@ -29,4 +29,14 @@ public class GeofenceService {
             return "default";
         }
     }
+
+    public String getGeofenceId(double lat, double lng, int resolution) {
+        try {
+            long h3Index = h3.latLngToCell(lat, lng, resolution);
+            return Long.toHexString(h3Index);
+        } catch (Exception e) {
+            logger.error("Error converting lat/lng to H3: lat={}, lng={}, res={}", lat, lng, resolution, e);
+            return "default";
+        }
+    }
 }

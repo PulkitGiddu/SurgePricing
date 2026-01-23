@@ -34,6 +34,9 @@ public class RideRequestRecordDTO {
     @JsonProperty("geofenceId")
     private String geofenceId;
 
+    @JsonProperty("resolution")
+    private int resolution;
+
     @JsonProperty("pickupName")
     private String pickupName;
 
@@ -56,6 +59,7 @@ public class RideRequestRecordDTO {
                                 double surgeMultiplier,
                                 double finalPrice,
                                 String geofenceId,
+                                int resolution,
                                 String pickupName,
                                 String dropName,
                                 long createdAt) {
@@ -69,6 +73,7 @@ public class RideRequestRecordDTO {
         this.surgeMultiplier = surgeMultiplier;
         this.finalPrice = finalPrice;
         this.geofenceId = geofenceId;
+        this.resolution = resolution;
         this.pickupName = pickupName;
         this.dropName = dropName;
         this.createdAt = createdAt;
@@ -103,6 +108,9 @@ public class RideRequestRecordDTO {
 
     public String getGeofenceId() { return geofenceId; }
     public void setGeofenceId(String geofenceId) { this.geofenceId = geofenceId; }
+
+    public int getResolution() { return resolution; }
+    public void setResolution(int resolution) { this.resolution = resolution; }
 
     public String getPickupName() { return pickupName; }
     public void setPickupName(String pickupName) { this.pickupName = pickupName; }

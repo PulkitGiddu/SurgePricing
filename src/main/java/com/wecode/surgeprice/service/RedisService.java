@@ -12,12 +12,12 @@ import java.util.Set;
 @Service
 public class RedisService {
 
-    private static final String DRIVER_KEY_PREFIX = "geofence:%s:drivers";
-    private static final String REQUEST_KEY_PREFIX = "geofence:%s:requests";
-    private static final String DEMAND_KEY_PREFIX = "geofence:%s:demand";
-    private static final String BASELINE_KEY_PREFIX = "geofence:%s:baseline";
-    private static final String SURGE_KEY_PREFIX = "geofence:%s:surge";
-    private static final String LAST_UPDATE_KEY_PREFIX = "geofence:%s:last_update";
+    private static final String DRIVER_KEY_PREFIX = "geofence:%d:%s:drivers";
+    private static final String REQUEST_KEY_PREFIX = "geofence:%d:%s:requests";
+    private static final String DEMAND_KEY_PREFIX = "geofence:%d:%s:demand";
+    private static final String BASELINE_KEY_PREFIX = "geofence:%d:%s:baseline";
+    private static final String SURGE_KEY_PREFIX = "geofence:%d:%s:surge";
+    private static final String LAST_UPDATE_KEY_PREFIX = "geofence:%d:%s:last_update";
 
     private final RedisTemplate<String, String> redisTemplate;
     private final SurgePricingProperties properties;
@@ -27,107 +27,102 @@ public class RedisService {
         this.properties = properties;
     }
 
-    // Driver operations
-    public void addDriver(String geofenceId, String driverId) {
-        String key = String.format(DRIVER_KEY_PREFIX, geofenceId);
+    public void addDriver(int resolution, String geofenceId, String driverId) {
+        String key = String.format(DRIVER_KEY_PREFIX, resolution, geofenceId);
         long now = System.currentTimeMillis();
         redisTemplate.opsForZSet().add(key, driverId, now);
         pruneOld(key, now);
         redisTemplate.expire(key, Duration.ofSeconds(properties.getDataFreshnessSeconds()));
-        updateLastSeen(geofenceId);
+        updateLastSeen(resolution, geofenceId);
     }
 
-    public long getDriverCount(String geofenceId) {
-        String key = String.format(DRIVER_KEY_PREFIX, geofenceId);
+    public long getDriverCount(int resolution, String geofenceId) {
+        String key = String.format(DRIVER_KEY_PREFIX, resolution, geofenceId);
         long now = System.currentTimeMillis();
         Long count = redisTemplate.opsForZSet()
                 .count(key, now - properties.getDataFreshnessSeconds() * 1000L, now);
         return count != null ? count : 0;
     }
 
-    public Set<String> getDrivers(String geofenceId) {
-        String key = String.format(DRIVER_KEY_PREFIX, geofenceId);
+    public Set<String> getDrivers(int resolution, String geofenceId) {
+        String key = String.format(DRIVER_KEY_PREFIX, resolution, geofenceId);
         long now = System.currentTimeMillis();
         return redisTemplate.opsForZSet()
                 .rangeByScore(key, now - properties.getDataFreshnessSeconds() * 1000L, now);
     }
 
-    public void addRideRequest(String geofenceId, String requestJson) {
-        String key = String.format(REQUEST_KEY_PREFIX, geofenceId);
+    public void addRideRequest(int resolution, String geofenceId, String requestJson) {
+        String key = String.format(REQUEST_KEY_PREFIX, resolution, geofenceId);
         long now = System.currentTimeMillis();
         redisTemplate.opsForZSet().add(key, requestJson, now);
         pruneOld(key, now);
         redisTemplate.expire(key, Duration.ofSeconds(properties.getDataFreshnessSeconds()));
     }
 
-    public long getRideRequestCount(String geofenceId) {
-        String key = String.format(REQUEST_KEY_PREFIX, geofenceId);
+    public long getRideRequestCount(int resolution, String geofenceId) {
+        String key = String.format(REQUEST_KEY_PREFIX, resolution, geofenceId);
         long now = System.currentTimeMillis();
         Long count = redisTemplate.opsForZSet()
                 .count(key, now - properties.getDataFreshnessSeconds() * 1000L, now);
         return count != null ? count : 0;
     }
 
-    public List<String> getActiveRideRequests(String geofenceId) {
-        String key = String.format(REQUEST_KEY_PREFIX, geofenceId);
+    public List<String> getActiveRideRequests(int resolution, String geofenceId) {
+        String key = String.format(REQUEST_KEY_PREFIX, resolution, geofenceId);
         long now = System.currentTimeMillis();
         Set<String> results = redisTemplate.opsForZSet()
                 .rangeByScore(key, now - properties.getDataFreshnessSeconds() * 1000L, now);
         return results != null ? List.copyOf(results) : List.of();
     }
 
-    // Demand operations
-    public void incrementDemand(String geofenceId) {
-        String key = String.format(DEMAND_KEY_PREFIX, geofenceId);
+    public void incrementDemand(int resolution, String geofenceId) {
+        String key = String.format(DEMAND_KEY_PREFIX, resolution, geofenceId);
         redisTemplate.opsForValue().increment(key);
         redisTemplate.expire(key, Duration.ofSeconds(properties.getDataFreshnessSeconds()));
     }
 
-    public long getDemandCount(String geofenceId) {
-        String key = String.format(DEMAND_KEY_PREFIX, geofenceId);
+    public long getDemandCount(int resolution, String geofenceId) {
+        String key = String.format(DEMAND_KEY_PREFIX, resolution, geofenceId);
         String value = redisTemplate.opsForValue().get(key);
         return value != null ? Long.parseLong(value) : 0;
     }
 
-    // Baseline operations
-    public void updateBaseline(String geofenceId, double baseline) {
-        String key = String.format(BASELINE_KEY_PREFIX, geofenceId);
+    public void updateBaseline(int resolution, String geofenceId, double baseline) {
+        String key = String.format(BASELINE_KEY_PREFIX, resolution, geofenceId);
         redisTemplate.opsForValue().set(key, String.valueOf(baseline));
     }
 
-    public double getBaseline(String geofenceId) {
-        String key = String.format(BASELINE_KEY_PREFIX, geofenceId);
+    public double getBaseline(int resolution, String geofenceId) {
+        String key = String.format(BASELINE_KEY_PREFIX, resolution, geofenceId);
         String value = redisTemplate.opsForValue().get(key);
         return value != null ? Double.parseDouble(value) : 0.0;
     }
 
     // Surge operations
-    public void updateSurge(String geofenceId, double surge) {
-        String key = String.format(SURGE_KEY_PREFIX, geofenceId);
+    public void updateSurge(int resolution, String geofenceId, double surge) {
+        String key = String.format(SURGE_KEY_PREFIX, resolution, geofenceId);
         redisTemplate.opsForValue().set(key, String.valueOf(surge));
     }
 
-    public double getSurge(String geofenceId) {
-        String key = String.format(SURGE_KEY_PREFIX, geofenceId);
+    public double getSurge(int resolution, String geofenceId) {
+        String key = String.format(SURGE_KEY_PREFIX, resolution, geofenceId);
         String value = redisTemplate.opsForValue().get(key);
         return value != null ? Double.parseDouble(value) : properties.getBaseSurgeMultiplier();
     }
 
-    // Last update tracking
-    private void updateLastSeen(String geofenceId) {
-        String key = String.format(LAST_UPDATE_KEY_PREFIX, geofenceId);
+    private void updateLastSeen(int resolution, String geofenceId) {
+        String key = String.format(LAST_UPDATE_KEY_PREFIX, resolution, geofenceId);
         redisTemplate.opsForValue().set(key, String.valueOf(System.currentTimeMillis()));
     }
 
-    public long getLastUpdate(String geofenceId) {
-        String key = String.format(LAST_UPDATE_KEY_PREFIX, geofenceId);
+    public long getLastUpdate(int resolution, String geofenceId) {
+        String key = String.format(LAST_UPDATE_KEY_PREFIX, resolution, geofenceId);
         String value = redisTemplate.opsForValue().get(key);
         return value != null ? Long.parseLong(value) : 0;
     }
 
-    // Get all active geofences
     public Set<String> getActiveGeofences() {
-        Set<String> keys = redisTemplate.keys("geofence:*:drivers");
+        Set<String> keys = redisTemplate.keys("geofence:*:*:drivers");
         return keys != null ? keys : Set.of();
     }
 
