@@ -117,6 +117,9 @@ export default function App() {
   const [useManualCoords, setUseManualCoords] = useState(false);
   const [riderRoute, setRiderRoute] = useState(null);
   const [riderRouteError, setRiderRouteError] = useState("");
+  const [livePricingEnabled, setLivePricingEnabled] = useState(true);
+  const [riderStreamStatus, setRiderStreamStatus] = useState("");
+  const [riderStreamError, setRiderStreamError] = useState("");
 
   const [driverForm, setDriverForm] = useState(defaultDriver);
   const [driverBatch, setDriverBatch] = useState(`[
@@ -204,6 +207,67 @@ export default function App() {
       cancelled = true;
     };
   }, [riderForm.pickupLat, riderForm.pickupLng, riderForm.dropLat, riderForm.dropLng]);
+
+  useEffect(() => {
+    if (!livePricingEnabled) {
+      setRiderStreamStatus("");
+      setRiderStreamError("");
+      return undefined;
+    }
+    if (
+      !isValidLatLng(riderForm.pickupLat, riderForm.pickupLng) ||
+      !isValidLatLng(riderForm.dropLat, riderForm.dropLng)
+    ) {
+      setRiderStreamStatus("");
+      return undefined;
+    }
+
+    const params = new URLSearchParams({
+      pickupLat: riderForm.pickupLat,
+      pickupLng: riderForm.pickupLng,
+      dropLat: riderForm.dropLat,
+      dropLng: riderForm.dropLng,
+      riderId: riderForm.riderId || "rider_live"
+    });
+    if (riderForm.pickupName) params.append("pickupName", riderForm.pickupName);
+    if (riderForm.dropName) params.append("dropName", riderForm.dropName);
+
+    const source = new EventSource(`${API_BASE}/rider/stream?${params.toString()}`);
+    setRiderStreamStatus("Live pricing active.");
+    setRiderStreamError("");
+
+    const handlePrice = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setRiderResult(data);
+      } catch (error) {
+        setRiderStreamError("Live update parse error.");
+      }
+    };
+
+    const handleError = () => {
+      setRiderStreamError("Live pricing connection lost.");
+      source.close();
+    };
+
+    source.addEventListener("price", handlePrice);
+    source.addEventListener("error", handleError);
+
+    return () => {
+      source.removeEventListener("price", handlePrice);
+      source.removeEventListener("error", handleError);
+      source.close();
+    };
+  }, [
+    livePricingEnabled,
+    riderForm.pickupLat,
+    riderForm.pickupLng,
+    riderForm.dropLat,
+    riderForm.dropLng,
+    riderForm.riderId,
+    riderForm.pickupName,
+    riderForm.dropName
+  ]);
 
   useEffect(() => {
     if (
@@ -392,6 +456,14 @@ export default function App() {
                 />
                 Manual coordinate entry
               </label>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={livePricingEnabled}
+                  onChange={(e) => setLivePricingEnabled(e.target.checked)}
+                />
+                Live surge pricing
+              </label>
             </div>
             <label>
               Pickup Lat
@@ -459,6 +531,8 @@ export default function App() {
           {riderGeoStatus && <p className="status">{riderGeoStatus}</p>}
           {riderGeoError && <p className="error">{riderGeoError}</p>}
           {riderRouteError && <p className="error">{riderRouteError}</p>}
+          {riderStreamStatus && <p className="status">{riderStreamStatus}</p>}
+          {riderStreamError && <p className="error">{riderStreamError}</p>}
 
           <div className="map-panel">
             <h3>Live Route Map</h3>
