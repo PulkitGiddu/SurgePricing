@@ -1,4 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  MapContainer,
+  Marker,
+  Polyline,
+  Popup,
+  TileLayer,
+  useMap
+} from "react-leaflet";
+import L from "leaflet";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8081";
 
@@ -18,12 +27,84 @@ const defaultDriver = {
   lng: 79.5644
 };
 
+const defaultMarkerIcon = new L.Icon({
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
 function buildMapLink(pickupLat, pickupLng, dropLat, dropLng) {
-  return `https:=${pickupLat},${pickupLng};${dropLat},${dropLng}`;
+  return `https://www.google.com/maps/dir/?api=1&origin=${pickupLat},${pickupLng}&destination=${dropLat},${dropLng}&travelmode=driving`;
+}
+
+function buildDriverMapLink(driverLat, driverLng, pickupLat, pickupLng, dropLat, dropLng) {
+  return `https://www.google.com/maps/dir/?api=1&origin=${driverLat},${driverLng}&destination=${dropLat},${dropLng}&waypoints=${pickupLat},${pickupLng}&travelmode=driving`;
 }
 
 function formatNumber(value, digits = 2) {
   return Number.isFinite(value) ? value.toFixed(digits) : "-";
+}
+
+function isValidLatLng(lat, lng) {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180
+  );
+}
+
+async function geocodePlace(name) {
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(
+      name
+    )}`
+  );
+  if (!response.ok) {
+    throw new Error(`Geocoding failed (${response.status})`);
+  }
+  const results = await response.json();
+  if (!results.length) {
+    throw new Error(`No location found for "${name}"`);
+  }
+  return {
+    lat: Number(results[0].lat),
+    lng: Number(results[0].lon),
+    label: results[0].display_name
+  };
+}
+
+async function fetchRoute(coords) {
+  const formatted = coords.map(([lat, lng]) => `${lng},${lat}`).join(";");
+  const response = await fetch(
+    `https://router.project-osrm.org/route/v1/driving/${formatted}?overview=full&geometries=geojson`
+  );
+  if (!response.ok) {
+    throw new Error(`Route fetch failed (${response.status})`);
+  }
+  const payload = await response.json();
+  if (!payload.routes?.length) {
+    throw new Error("No route found for those points.");
+  }
+  const route = payload.routes[0];
+  return {
+    coordinates: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+    distanceKm: route.distance / 1000,
+    durationMin: route.duration / 60
+  };
+}
+
+function FitBounds({ bounds }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!bounds || !bounds.length) return;
+    map.fitBounds(bounds, { padding: [24, 24] });
+  }, [bounds, map]);
+  return null;
 }
 
 export default function App() {
@@ -31,6 +112,11 @@ export default function App() {
   const [riderForm, setRiderForm] = useState(defaultRider);
   const [riderResult, setRiderResult] = useState(null);
   const [riderError, setRiderError] = useState("");
+  const [riderGeoStatus, setRiderGeoStatus] = useState("");
+  const [riderGeoError, setRiderGeoError] = useState("");
+  const [useManualCoords, setUseManualCoords] = useState(false);
+  const [riderRoute, setRiderRoute] = useState(null);
+  const [riderRouteError, setRiderRouteError] = useState("");
 
   const [driverForm, setDriverForm] = useState(defaultDriver);
   const [driverBatch, setDriverBatch] = useState(`[
@@ -53,6 +139,9 @@ export default function App() {
   });
   const [availabilityResult, setAvailabilityResult] = useState(null);
   const [availabilityError, setAvailabilityError] = useState("");
+  const [selectedRide, setSelectedRide] = useState(null);
+  const [driverRoute, setDriverRoute] = useState(null);
+  const [driverRouteError, setDriverRouteError] = useState("");
 
   const mapLink = useMemo(() => {
     if (!riderResult) return "";
@@ -63,6 +152,111 @@ export default function App() {
       riderForm.dropLng
     );
   }, [riderForm, riderResult]);
+
+  const riderMapBounds = useMemo(() => {
+    if (!riderRoute?.coordinates?.length) return null;
+    return L.latLngBounds(riderRoute.coordinates);
+  }, [riderRoute]);
+
+  const riderMapCenter = useMemo(() => {
+    if (isValidLatLng(riderForm.pickupLat, riderForm.pickupLng)) {
+      return [riderForm.pickupLat, riderForm.pickupLng];
+    }
+    return [defaultRider.pickupLat, defaultRider.pickupLng];
+  }, [riderForm.pickupLat, riderForm.pickupLng]);
+
+  const driverMapBounds = useMemo(() => {
+    if (!driverRoute?.coordinates?.length) return null;
+    return L.latLngBounds(driverRoute.coordinates);
+  }, [driverRoute]);
+
+  const driverMapCenter = useMemo(() => {
+    if (isValidLatLng(driverForm.lat, driverForm.lng)) {
+      return [driverForm.lat, driverForm.lng];
+    }
+    return [defaultDriver.lat, defaultDriver.lng];
+  }, [driverForm.lat, driverForm.lng]);
+
+  useEffect(() => {
+    if (
+      !isValidLatLng(riderForm.pickupLat, riderForm.pickupLng) ||
+      !isValidLatLng(riderForm.dropLat, riderForm.dropLng)
+    ) {
+      setRiderRoute(null);
+      return;
+    }
+    let cancelled = false;
+    setRiderRouteError("");
+    fetchRoute([
+      [riderForm.pickupLat, riderForm.pickupLng],
+      [riderForm.dropLat, riderForm.dropLng]
+    ])
+      .then((route) => {
+        if (!cancelled) setRiderRoute(route);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setRiderRouteError(error.message);
+          setRiderRoute(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [riderForm.pickupLat, riderForm.pickupLng, riderForm.dropLat, riderForm.dropLng]);
+
+  useEffect(() => {
+    if (
+      !selectedRide ||
+      !isValidLatLng(driverForm.lat, driverForm.lng) ||
+      !isValidLatLng(selectedRide.pickupLat, selectedRide.pickupLng) ||
+      !isValidLatLng(selectedRide.dropLat, selectedRide.dropLng)
+    ) {
+      setDriverRoute(null);
+      return;
+    }
+    let cancelled = false;
+    setDriverRouteError("");
+    fetchRoute([
+      [driverForm.lat, driverForm.lng],
+      [selectedRide.pickupLat, selectedRide.pickupLng],
+      [selectedRide.dropLat, selectedRide.dropLng]
+    ])
+      .then((route) => {
+        if (!cancelled) setDriverRoute(route);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setDriverRouteError(error.message);
+          setDriverRoute(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [driverForm.lat, driverForm.lng, selectedRide]);
+
+  async function handleGeocodeLocations() {
+    setRiderGeoStatus("");
+    setRiderGeoError("");
+    setRiderRouteError("");
+    try {
+      const [pickup, drop] = await Promise.all([
+        geocodePlace(riderForm.pickupName),
+        geocodePlace(riderForm.dropName)
+      ]);
+      setRiderForm((prev) => ({
+        ...prev,
+        pickupLat: pickup.lat,
+        pickupLng: pickup.lng,
+        dropLat: drop.lat,
+        dropLng: drop.lng
+      }));
+      setRiderGeoStatus("Coordinates updated from map search.");
+    } catch (error) {
+      setRiderGeoError(error.message);
+    }
+  }
 
   async function handleBookRide(event) {
     event.preventDefault();
@@ -186,12 +380,26 @@ export default function App() {
                 onChange={(e) => setRiderForm({ ...riderForm, dropName: e.target.value })}
               />
             </label>
+            <div className="full inline-row">
+              <button type="button" className="secondary" onClick={handleGeocodeLocations}>
+                Find coordinates on map
+              </button>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={useManualCoords}
+                  onChange={(e) => setUseManualCoords(e.target.checked)}
+                />
+                Manual coordinate entry
+              </label>
+            </div>
             <label>
               Pickup Lat
               <input
                 type="number"
                 step="any"
                 value={riderForm.pickupLat}
+                readOnly={!useManualCoords}
                 onChange={(e) =>
                   setRiderForm({ ...riderForm, pickupLat: Number(e.target.value) })
                 }
@@ -203,6 +411,7 @@ export default function App() {
                 type="number"
                 step="any"
                 value={riderForm.pickupLng}
+                readOnly={!useManualCoords}
                 onChange={(e) =>
                   setRiderForm({ ...riderForm, pickupLng: Number(e.target.value) })
                 }
@@ -214,6 +423,7 @@ export default function App() {
                 type="number"
                 step="any"
                 value={riderForm.dropLat}
+                readOnly={!useManualCoords}
                 onChange={(e) =>
                   setRiderForm({ ...riderForm, dropLat: Number(e.target.value) })
                 }
@@ -225,6 +435,7 @@ export default function App() {
                 type="number"
                 step="any"
                 value={riderForm.dropLng}
+                readOnly={!useManualCoords}
                 onChange={(e) =>
                   setRiderForm({ ...riderForm, dropLng: Number(e.target.value) })
                 }
@@ -245,6 +456,51 @@ export default function App() {
           </form>
 
           {riderError && <p className="error">{riderError}</p>}
+          {riderGeoStatus && <p className="status">{riderGeoStatus}</p>}
+          {riderGeoError && <p className="error">{riderGeoError}</p>}
+          {riderRouteError && <p className="error">{riderRouteError}</p>}
+
+          <div className="map-panel">
+            <h3>Live Route Map</h3>
+            <div className="map-frame">
+              <MapContainer
+                center={riderMapCenter}
+                zoom={13}
+                className="map"
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                {riderMapBounds && <FitBounds bounds={riderMapBounds} />}
+                {isValidLatLng(riderForm.pickupLat, riderForm.pickupLng) && (
+                  <Marker
+                    position={[riderForm.pickupLat, riderForm.pickupLng]}
+                    icon={defaultMarkerIcon}
+                  >
+                    <Popup>Pickup: {riderForm.pickupName}</Popup>
+                  </Marker>
+                )}
+                {isValidLatLng(riderForm.dropLat, riderForm.dropLng) && (
+                  <Marker
+                    position={[riderForm.dropLat, riderForm.dropLng]}
+                    icon={defaultMarkerIcon}
+                  >
+                    <Popup>Drop: {riderForm.dropName}</Popup>
+                  </Marker>
+                )}
+                {riderRoute?.coordinates?.length && (
+                  <Polyline positions={riderRoute.coordinates} color="#38bdf8" weight={4} />
+                )}
+              </MapContainer>
+            </div>
+            {riderRoute && (
+              <p className="meta">
+                Route distance {formatNumber(riderRoute.distanceKm)} km · ETA{" "}
+                {formatNumber(riderRoute.durationMin)} min
+              </p>
+            )}
+          </div>
 
           {riderResult && (
             <div className="result">
@@ -392,6 +648,13 @@ export default function App() {
                         </p>
                         <p>Distance: {formatNumber(ride.distanceKm)} km</p>
                         <p>Final Price: {formatNumber(ride.finalPrice)} Rs</p>
+                        <button
+                          className="secondary"
+                          type="button"
+                          onClick={() => setSelectedRide(ride)}
+                        >
+                          Show Route
+                        </button>
                       </div>
                       <a
                         href={buildMapLink(ride.pickupLat, ride.pickupLng, ride.dropLat, ride.dropLng)}
@@ -408,6 +671,80 @@ export default function App() {
               )}
             </div>
           )}
+
+          <div className="map-panel">
+            <h3>Pickup & Drop Route</h3>
+            {driverRouteError && <p className="error">{driverRouteError}</p>}
+            {!selectedRide && <p className="status">Select a ride to preview the route.</p>}
+            <div className="map-frame">
+              <MapContainer
+                center={driverMapCenter}
+                zoom={13}
+                className="map"
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                {driverMapBounds && <FitBounds bounds={driverMapBounds} />}
+                {isValidLatLng(driverForm.lat, driverForm.lng) && (
+                  <Marker position={[driverForm.lat, driverForm.lng]} icon={defaultMarkerIcon}>
+                    <Popup>Driver current location</Popup>
+                  </Marker>
+                )}
+                {selectedRide && isValidLatLng(selectedRide.pickupLat, selectedRide.pickupLng) && (
+                  <Marker
+                    position={[selectedRide.pickupLat, selectedRide.pickupLng]}
+                    icon={defaultMarkerIcon}
+                  >
+                    <Popup>Pickup: {selectedRide.pickupName || "Pickup"}</Popup>
+                  </Marker>
+                )}
+                {selectedRide && isValidLatLng(selectedRide.dropLat, selectedRide.dropLng) && (
+                  <Marker
+                    position={[selectedRide.dropLat, selectedRide.dropLng]}
+                    icon={defaultMarkerIcon}
+                  >
+                    <Popup>Drop: {selectedRide.dropName || "Drop"}</Popup>
+                  </Marker>
+                )}
+                {driverRoute?.coordinates?.length && (
+                  <Polyline positions={driverRoute.coordinates} color="#22c55e" weight={4} />
+                )}
+              </MapContainer>
+            </div>
+            {selectedRide && (
+              <div className="map-meta">
+                <p>
+                  Ride cost: <strong>{formatNumber(selectedRide.finalPrice)} Rs</strong>
+                </p>
+                {driverRoute && (
+                  <p>
+                    Total distance {formatNumber(driverRoute.distanceKm)} km · ETA{" "}
+                    {formatNumber(driverRoute.durationMin)} min
+                  </p>
+                )}
+                {isValidLatLng(driverForm.lat, driverForm.lng) &&
+                  isValidLatLng(selectedRide.pickupLat, selectedRide.pickupLng) &&
+                  isValidLatLng(selectedRide.dropLat, selectedRide.dropLng) && (
+                    <a
+                      href={buildDriverMapLink(
+                        driverForm.lat,
+                        driverForm.lng,
+                        selectedRide.pickupLat,
+                        selectedRide.pickupLng,
+                        selectedRide.dropLat,
+                        selectedRide.dropLng
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open full directions
+                    </a>
+                  )}
+              </div>
+            )}
+          </div>
         </section>
       )}
     </div>

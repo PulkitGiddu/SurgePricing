@@ -32,7 +32,7 @@ and driver availability are tracked in Redis with a 30s freshness window.
 ## Data Flow Diagram (Text)
 ```
 Driver App -> POST /driver/location -> Kafka topic "driver-locations"
-   -> DriverLocationConsumer -> Redis ZSET geofence:<id>:drivers
+   -> DriverLocationConsumer -> Redis ZSET geofence:<res>:<id>:drivers (multiple res)
 
 Rider App -> POST /rider/book
    -> H3 geofence + distance + ratio surge
@@ -62,20 +62,20 @@ Rules:
 Redis stores time-based presence using **ZSET** with timestamps as scores.
 
 ### Driver Presence
-- Key: `geofence:<id>:drivers`
+- Key: `geofence:<res>:<id>:drivers`
 - Type: ZSET (member = driverId, score = timestamp ms)
 - Freshness: 30s window (keys are pruned by score on each update)
 
 ### Ride Requests
-- Key: `geofence:<id>:requests`
+- Key: `geofence:<res>:<id>:requests`
 - Type: ZSET (member = JSON string of RideRequestRecordDTO)
 - Freshness: 30s window
 
 ### Other Existing Keys (legacy surge worker)
-- `geofence:<id>:surge` (String)
-- `geofence:<id>:baseline` (String)
-- `geofence:<id>:demand` (String)
-- `geofence:<id>:last_update` (String)
+- `geofence:<res>:<id>:surge` (String)
+- `geofence:<res>:<id>:baseline` (String)
+- `geofence:<res>:<id>:demand` (String)
+- `geofence:<res>:<id>:last_update` (String)
 
 ## APIs
 ### Driver

@@ -66,6 +66,26 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
+.inline-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #cbd5f5;
+}
+
+.toggle input {
+  width: 16px;
+  height: 16px;
+}
+
 label {
   display: flex;
   flex-direction: column;
@@ -170,6 +190,39 @@ button {
   color: #38bdf8;
 }
 
+.map-panel {
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #1f2937;
+  background: #0b1220;
+}
+
+.map-frame {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #1f2937;
+}
+
+.map {
+  height: 320px;
+  width: 100%;
+}
+
+.map-meta {
+  margin-top: 12px;
+  color: #cbd5f5;
+}
+
+.map-meta a {
+  color: #38bdf8;
+}
+
+.meta {
+  margin-top: 10px;
+  color: #94a3b8;
+}
+
 .ride-list {
   display: grid;
   gap: 14px;
@@ -185,6 +238,10 @@ button {
   border-radius: 12px;
   border: 1px solid #1f2937;
   background: #0f172a;
+}
+
+.ride-card button {
+  margin-top: 10px;
 }
 
 .ride-card a {
